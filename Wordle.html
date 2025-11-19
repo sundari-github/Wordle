@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Word Guessing Game</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f8f8f8; }
+    .board { margin: 40px auto; width: max-content; }
+    .row { display: flex; margin-bottom: 8px; }
+    .cell {
+      width: 48px; height: 48px; margin: 2px;
+      font-size: 2em; text-align: center; border: 2px solid #bbb;
+      background: #fff; border-radius: 6px; outline: none;
+      text-transform: uppercase;
+      transition: background 0.2s, color 0.2s, font-weight 0.2s;
+    }
+    .cell.correct { color: #4caf50; font-weight: bold; background: #fff; border-color: #bbb; }
+    .cell.present { color: #ffd600; font-weight: bold; background: #fff; border-color: #bbb; }
+    .cell.absent { color: #888; text-decoration: line-through; background: #fff; border-color: #bbb; }
+    .cell:disabled { background: #f0f0f0; }
+    #message { margin: 20px auto; text-align: center; font-size: 1.2em; }
+    #restart { display: block; margin: 20px auto; }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center;">Word Guessing Game</h2>
+  <div id="message"></div>
+  <div class="board" id="board"></div>
+  <button id="restart" style="display:none;">Restart</button>
+  <script>
+    // Remove hardcoded words and word selection
+    let words = [];
+    let word = "";
+    const wordLength = 5; // Set to 5 for 5-letter words
+    const maxRows = 6;
+    let currentRow = 0;
+    let gameOver = false;
+
+    const board = document.getElementById('board');
+    const message = document.getElementById('message');
+    const restartBtn = document.getElementById('restart');
+
+    // Load wordlist.txt and start the game
+    fetch('wordlist.txt')
+      .then(response => response.text())
+      .then(text => {
+        words = text.split(/\r?\n/).map(w => w.trim().toUpperCase()).filter(w => w.length === wordLength);
+        if (words.length === 0) {
+          message.textContent = "No words found in wordlist.txt!";
+          return;
+        }
+        word = words[Math.floor(Math.random() * words.length)];
+        createBoard();
+      })
+      .catch(() => {
+        message.textContent = "Could not load wordlist.txt!";
+      });
+
+    function createBoard() {
+      board.innerHTML = '';
+      for (let r = 0; r < maxRows; r++) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        for (let c = 0; c < wordLength; c++) {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.maxLength = 1;
+          input.className = 'cell';
+          input.disabled = r !== 0;
+          input.dataset.row = r;
+          input.dataset.col = c;
+          input.autocomplete = 'off';
+          input.addEventListener('input', handleInput);
+          input.addEventListener('keydown', handleKeyDown);
+          row.appendChild(input);
+        }
+        board.appendChild(row);
+      }
+      board.querySelector('.cell').focus();
+    }
+
+    function getRowInputs(row) {
+      return board.querySelectorAll(`.cell[data-row='${row}']`);
+    }
+
+    function checkGuess(guess) {
+      const result = Array(wordLength).fill('absent');
+      const answerArr = word.split('');
+      const guessArr = guess.split('');
+      // First pass: correct positions
+      for (let i = 0; i < wordLength; i++) {
+        if (guessArr[i] === answerArr[i]) {
+          result[i] = 'correct';
+          answerArr[i] = null; // Mark as used
+          guessArr[i] = null;
+        }
+      }
+      // Second pass: present but misplaced
+      for (let i = 0; i < wordLength; i++) {
+        if (guessArr[i] && answerArr.includes(guessArr[i])) {
+          result[i] = 'present';
+          answerArr[answerArr.indexOf(guessArr[i])] = null;
+        }
+      }
+      return result;
+    }
+
+    function handleInput(e) {
+      const input = e.target;
+      if (!/^[a-zA-Z]$/.test(input.value)) {
+        input.value = '';
+        return;
+      }
+      // Move to next cell if typing (not Tab)
+      const col = +input.dataset.col;
+      if (col < wordLength - 1 && input.value) {
+        getRowInputs(currentRow)[col + 1].focus();
+      }
+      // Do not check here; check will be handled on Enter key
+    }
+
+    function handleKeyDown(e) {
+      const input = e.target;
+      const col = +input.dataset.col;
+      if (e.key === 'Backspace' && !input.value && col > 0) {
+        getRowInputs(currentRow)[col - 1].focus();
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault(); // Prevent default Enter behavior
+        // Only process Enter if the input is in the current row and not already checked
+        if (+input.dataset.row !== currentRow) return;
+        const inputs = getRowInputs(currentRow);
+        // Prevent double check if already disabled
+        if ([...inputs].every(inp => inp.disabled)) return;
+        const guessArr = Array.from(inputs).map(inp => inp.value.toUpperCase());
+        const guess = guessArr.join('');
+        // Check for any empty input
+        if (guessArr.some(val => val === '')) {
+          message.textContent = 'Please fill all boxes before submitting.';
+          return;
+        }
+        message.textContent = '';
+        // Disable current row
+        inputs.forEach(inp => inp.disabled = true);
+        // Check result
+        const result = checkGuess(guess);
+        for (let i = 0; i < wordLength; i++) {
+          inputs[i].classList.add(result[i]);
+        }
+        if (guess === word) {
+          message.textContent = 'Congratulations! You guessed the word!';
+          gameOver = true;
+          restartBtn.style.display = 'block';
+          return;
+        }
+        currentRow++;
+        if (currentRow >= maxRows) {
+          message.textContent = `Sorry, you've used all attempts. The word was: ${word}`;
+          gameOver = true;
+          restartBtn.style.display = 'block';
+          return;
+        }
+        // Enable next row
+        const nextInputs = getRowInputs(currentRow);
+        nextInputs.forEach(inp => inp.disabled = false);
+        nextInputs[0].focus();
+      }
+    }
+
+    function resetGame() {
+      location.reload();
+    }
+
+    // No longer attach input/keydown to board; handled per input
+    restartBtn.addEventListener('click', resetGame);
+  </script>
+</body>
+</html>

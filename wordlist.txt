@@ -486,3 +486,5 @@ Visit
 Would
 Vital
 Voice
+Sixer
+Clown
